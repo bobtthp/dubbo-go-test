@@ -1,0 +1,14 @@
+version: '3.4'
+services:
+  zk_server:
+   image: zookeeper:3.4
+   ports:
+    - 2181:2181
+  dubbo-admin:
+   image: dubbo-admin:latest
+   links:
+    - zk_server:zookeeper
+   depends_on:
+    - zk_server
+   ports:
+    - 7001:7001
