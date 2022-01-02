@@ -151,6 +151,10 @@ type User struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
+func (m *User) JavaClassName() string {
+	return "com.apache.dubbo.sample.basic.IGreeter"
+}
+
 func (m *User) Reset()         { *m = User{} }
 func (m *User) String() string { return proto.CompactTextString(m) }
 func (*User) ProtoMessage()    {}

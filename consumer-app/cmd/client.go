@@ -19,99 +19,83 @@ package main
 
 import (
 	"context"
-	//"github.com/gin-gonic/gin"
-	//"net/http"
+	"dubbo.apache.org/dubbo-go/v3/common/logger"
+	"flag"
+	"fmt"
+	hessian "github.com/apache/dubbo-go-hessian2"
+	"github.com/gin-gonic/gin"
+	"net/http"
 )
 
 import (
-	"dubbo.apache.org/dubbo-go/v3/common/logger"
 	"dubbo.apache.org/dubbo-go/v3/config"
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
 )
 
 import (
-	"bob.com/dubbogo-test-app/consumer-app/cmd/server/api"
+	"github.com/dubbogo-test/consumer-app/api"
 )
 
 var grpcGreeterImpl = new(api.GreeterClientImpl)
 
-const MeshRouteConf = "apiVersion: service.dubbo.apache.org/v1alpha1\n" +
-	"kind: DestinationRule\n" +
-	"metadata: { name: demo-route }\n" +
-	"spec:\n" +
-	"  host: demo\n" +
-	"  subsets:\n" +
-	"    - labels: { env-sign: xxx, tag1: hello }\n" +
-	"      name: isolation\n" +
-	"    - labels: { env-sign: yyy }\n" +
-	"      name: testing-trunk\n" +
-	"    - labels: { env-sign: zzz }\n" +
-	"      name: testing\n" +
-	"  trafficPolicy:\n" +
-	"    loadBalancer: { simple: ROUND_ROBIN }\n\n" +
-	"---\n\n" +
-	"apiVersion: service.dubbo.apache.org/v1alpha1\n" +
-	"kind: VirtualService\n" +
-	"metadata: {name: demo-route}\n" +
-	"spec:\n" +
-	"  dubbo:\n" +
-	"    - routedetail:\n" +
-	"        - match:\n" +
-	"            - sourceLabels: {trafficLabel: xxx}\n" +
-	"          name: xxx-project\n" +
-	"          route:\n" +
-	"            - destination: {host: demo, subset: isolation}\n" +
-	"        - match:\n" +
-	"            - sourceLabels: {trafficLabel: testing-trunk}\n" +
-	"          name: testing-trunk\n" +
-	"          route:\n" +
-	"            - destination: {host: demo, subset: testing-trunk}\n" +
-	"        - name: testing\n" +
-	"          route:\n" +
-	"            - destination: {host: demo, subset: testing}\n" +
-	"      services:\n" +
-	"        - {exact: com.apache.dubbo.sample.basic.IGreeter}\n" +
-	"  hosts: [demo]"
+var zk string
 
-// export DUBBO_GO_CONFIG_PATH= PATH_TO_SAMPLES/helloworld/go-client/conf/dubbogo.yml
+func init()  {
+	flag.StringVar(&zk, "zk", "127.0.0.1:2181","-zk=127.0.0.1:2181")
+}
+
+
 func main() {
+	flag.Parse()
+
+	// init rootConfig with config api
+	rc := config.NewRootConfigBuilder().
+		SetConsumer(config.NewConsumerConfigBuilder().
+			AddReference("GreeterClientImpl", config.NewReferenceConfigBuilder().
+				SetProtocol("tri").
+				SetInterface("com.apache.dubbo.sample.basic.IGreeter").
+				Build()).
+			Build()).
+		AddRegistry("bob", &config.RegistryConfig{
+		Protocol: "zookeeper",
+		Address:  zk,
+		Timeout:  "3s",
+	}).
+		Build()
+
 	config.SetConsumerService(grpcGreeterImpl)
-	if err := config.Load(); err != nil {
-		panic(err)
-	}
-	// cofig center
-	dynamicConfiguration, err := config.GetRootConfig().ConfigCenter.GetDynamicConfiguration()
-	if err != nil {
+	hessian.RegisterPOJO(&api.User{})
+	// load config
+	if err := rc.Init(); err != nil {
+		fmt.Println(err)
+
 		panic(err)
 	}
 
-	// publish mesh route config
-	err = dynamicConfiguration.PublishConfig("dubbo.io.MESHAPPRULE", "dubbo", MeshRouteConf)
-	if err != nil {
-		return
-	}
-	//// 1.创建路由
-	//r := gin.Default()
-	//// 2.绑定路由规则，执行的函数
-	//// gin.Context，封装了request和response
-	//r.GET("/", func(c *gin.Context) {
-	//	c.String(http.StatusOK, "hello World!")
-	//})
-	//// health check
-	//r.GET("/health.check", func(c *gin.Context) {
-	//	c.String(http.StatusOK, "ok")
-	//})
-	//// 3.监听端口，默认在8080
-	//// Run("里面不指定端口号默认为8080")
-	//r.Run(":8001")
+	// 1.创建路由
+	r := gin.Default()
+	// 2.绑定路由规则，执行的函数
+	// gin.Context，封装了request和response
+	r.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, "hello World!")
+	})
+	// health check
+	r.GET("/health.check", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+	r.GET("/consumer", func(c *gin.Context) {
+		req := &api.HelloRequest{
+			Name: "laurence",
+		}
+		reply, err := grpcGreeterImpl.SayHello(context.Background(), req)
+		if err != nil {
+			logger.Error(err)
+		}
+		logger.Infof("client response result: %v\n", reply)
+	})
+	// 3.监听端口，默认在8080
+	// Run("里面不指定端口号默认为8080")
+	r.Run(":8001")
 
-	logger.Info("start to test dubbo")
-	req := &api.HelloRequest{
-		Name: "laurence",
-	}
-	reply, err := grpcGreeterImpl.SayHello(context.Background(), req)
-	if err != nil {
-		logger.Error(err)
-	}
-	logger.Infof("client response result: %v\n", reply)
+
 }

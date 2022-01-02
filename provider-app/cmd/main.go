@@ -1,22 +1,54 @@
 package main
 
 import (
+	"flag"
+	"fmt"
+	hessian "github.com/apache/dubbo-go-hessian2"
+	"github.com/dubbogo-test/provider-app/api"
 	"github.com/gin-gonic/gin"
 	"net/http"
 )
 
 import (
-	"bob.com/dubbogo-test-app/provider-app/cmd/server/api"
 	"dubbo.apache.org/dubbo-go/v3/config"
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
 )
 
+var zk string
 
+func init()  {
+	flag.StringVar(&zk, "zk", "127.0.0.1:2181","-zk=127.0.0.1:2181")
+}
 
 
 func main() {
+	flag.Parse()
+	rc := config.NewRootConfigBuilder().
+		SetProvider(config.NewProviderConfigBuilder().
+			AddService("GreeterProvider", config.NewServiceConfigBuilder().
+				SetInterface("com.apache.dubbo.sample.basic.IGreeter").
+				SetProtocolIDs("triple").
+				Build()).
+			Build()).
+		AddProtocol("triple", config.NewProtocolConfigBuilder().
+			SetName("tri").
+			SetPort("20000").
+			Build()).
+		AddRegistry("bob", &config.RegistryConfig{
+		 Protocol: "zookeeper",
+		 Address:  zk,
+		 Timeout:  "3s",
+	 }).
+		Build()
+
+	//rc.Init()
+
 	config.SetProviderService(&api.GreeterProvider{})
-	if err := config.Load(); err != nil {
+	 hessian.RegisterPOJO(&api.User{})
+
+	if err := rc.Init(); err != nil {
+		fmt.Println(err)
+
 		panic(err)
 	}
 

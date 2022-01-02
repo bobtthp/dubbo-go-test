@@ -1,19 +1,17 @@
 dubbo:
   registries:
-    demoZK:
-      protocol: zookeeper
+    demoZK: # define registry-id 'demoZK'
+      protocol: zookeeper # set registry protocol
       timeout: 3s
       address: 127.0.0.1:2181
-  config-center:
-    protocol: zookeeper
-    address: 127.0.0.1:2181
-    data-id: "dubbo-go-samples-configcenter-zookeeper-client"
+  protocols:
+    triple:
+      name: tri
+      port: 20000
   consumer:
-    registryIDs:
-      - demoZK
+    registry-ids:
+      - demoZK # use registry-id 'demoZK'
     references:
       GreeterClientImpl:
         protocol: tri
-        interface: com.apache.dubbo.sample.basic.IGreeter # must be compatible with grpc or dubbo-java
-        params:
-          env-sign: zzz
+        interface: com.apache.dubbo.sample.basic.IGreeter

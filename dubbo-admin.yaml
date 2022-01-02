@@ -5,10 +5,14 @@ services:
    ports:
     - 2181:2181
   dubbo-admin:
-   image: dubbo-admin:latest
+   image: apache/dubbo-admin:latest
+   environment:
+       - admin.root.user.name=root
+       - admin.root.user.password=root
+       - dubbo.registry.address=zookeeper://zookeeper:2181
    links:
     - zk_server:zookeeper
    depends_on:
     - zk_server
    ports:
-    - 7001:7001
+    - 8080:8080
