@@ -21,10 +21,13 @@ import (
 	"context"
 	"dubbo.apache.org/dubbo-go/v3/common/logger"
 	"flag"
-	"fmt"
-	hessian "github.com/apache/dubbo-go-hessian2"
+	"github.com/SkyAPM/go2sky"
+	dubbo_go "github.com/SkyAPM/go2sky-plugins/dubbo-go"
+	"github.com/SkyAPM/go2sky/reporter"
 	"github.com/gin-gonic/gin"
+	"log"
 	"net/http"
+	"time"
 )
 
 import (
@@ -38,42 +41,96 @@ import (
 
 var grpcGreeterImpl = new(api.GreeterClientImpl)
 
-var zk string
+var nacos string
+var domain string
+var count int
 
-func init()  {
-	flag.StringVar(&zk, "zk", "127.0.0.1:2181","-zk=127.0.0.1:2181")
+func init() {
+	flag.StringVar(&nacos, "nacos", "127.0.0.1:8848", "-nacos 127.0.0.1:8848")
+	flag.StringVar(&domain, "domain", "127.0.0.1", "-domain provider-tri-app")
+	flag.IntVar(&count, "count", 1, "-domain provider-tri-app")
 }
-
 
 func main() {
 	flag.Parse()
 
+	// setup reporter, use gRPC reporter for production
+	report, err := reporter.NewGRPCReporter("YOUR_SKYWALKING_DOMAIN_NAME_OR_IP:11800")
+	if err != nil {
+		log.Fatalf("new reporter error: %v \n", err)
+	}
+
+	// setup tracer
+	tracer, err := go2sky.NewTracer("dubbo-go-skywalking-sample-tracer", go2sky.WithReporter(report))
+	if err != nil {
+		log.Fatalf("crate tracer error: %v \n", err)
+	}
+
+	// set dubbogo plugin client tracer
+	err = dubbo_go.SetClientTracer(tracer)
+	if err != nil {
+		log.Fatalf("set tracer error: %v \n", err)
+	}
+
+	// set extra tags and report tags
+	dubbo_go.SetClientExtraTags("extra-tags", "client")
+	dubbo_go.SetClientReportTags("release")
+
 	// init rootConfig with config api
 	rc := config.NewRootConfigBuilder().
 		SetConsumer(config.NewConsumerConfigBuilder().
-			AddReference("GreeterClientImpl", config.NewReferenceConfigBuilder().
-				SetProtocol("tri").
-				SetInterface("com.apache.dubbo.sample.basic.IGreeter").
-				Build()).
+			//AddReference("GreeterClientImpl", config.NewReferenceConfigBuilder().
+			//	SetProtocol("tri").
+			//	SetInterface("com.apache.dubbo.sample.basic.IGreeter").
+			//	Build()).
+			SetReferences(
+				map[string]*config.ReferenceConfig{
+					"GreeterClientImpl": &config.ReferenceConfig{
+						InterfaceName: "com.apache.dubbo.sample.basic.IGreeter",
+						Check:         nil,
+						//URL:           fmt.Sprintf("tri://%s:2045/com.apache.dubbo.sample.basic.IGreeter", domain),
+						Protocol: "tri",
+					},
+				}).
 			Build()).
+		SetLogger(&config.LoggerConfig{ZapConfig: config.ZapConfig{
+			Level: "INFO"}}).
 		AddRegistry("bob", &config.RegistryConfig{
-		Protocol: "zookeeper",
-		Address:  zk,
-		Timeout:  "3s",
-	}).
+			Protocol: "nacos",
+			Address:  nacos,
+			Timeout:  "3s",
+		}).
 		Build()
 
 	config.SetConsumerService(grpcGreeterImpl)
-	hessian.RegisterPOJO(&api.User{})
+	//hessian.RegisterPOJO(&api.User{})
 	// load config
 	if err := rc.Init(); err != nil {
-		fmt.Println(err)
-
 		panic(err)
 	}
 
+	go func() {
+		for {
+			time.Sleep(1 * time.Second)
+			for i := 0; i < count; i++ {
+				go func() {
+					req := &api.HelloRequest{
+						Name: "bobtthp",
+					}
+					reply, err := grpcGreeterImpl.SayHello(context.Background(), req)
+					if err != nil {
+						logger.Error(err)
+					}
+					logger.Infof("client response result: %v\n", reply)
+				}()
+			}
+
+		}
+	}()
+
 	// 1.创建路由
 	r := gin.Default()
+
 	// 2.绑定路由规则，执行的函数
 	// gin.Context，封装了request和response
 	r.GET("/", func(c *gin.Context) {
@@ -96,6 +153,5 @@ func main() {
 	// 3.监听端口，默认在8080
 	// Run("里面不指定端口号默认为8080")
 	r.Run(":8001")
-
 
 }

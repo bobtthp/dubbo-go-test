@@ -1,0 +1,17 @@
+dubbo:
+  registries:
+    demoZK: # define registry-id 'demoZK'
+      protocol: zookeeper # set registry protocol
+      timeout: 3s
+      address: 127.0.0.1:2181
+  protocols:
+    triple:
+      name: tri
+      port: 20000
+  consumer:
+    registry-ids:
+      - demoZK # use registry-id 'demoZK'
+    references:
+      GreeterClientImpl:
+        protocol: tri
+        interface: com.apache.dubbo.sample.basic.IGreeter

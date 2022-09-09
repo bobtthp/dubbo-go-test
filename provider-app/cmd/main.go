@@ -3,9 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	hessian "github.com/apache/dubbo-go-hessian2"
+	"github.com/SkyAPM/go2sky"
+	dubbo_go "github.com/SkyAPM/go2sky-plugins/dubbo-go"
+	"github.com/SkyAPM/go2sky/reporter"
 	"github.com/dubbogo-test/provider-app/api"
 	"github.com/gin-gonic/gin"
+	"log"
 	"net/http"
 )
 
@@ -14,16 +17,41 @@ import (
 	_ "dubbo.apache.org/dubbo-go/v3/imports"
 )
 
-var zk string
+var nacos string
 
-func init()  {
-	flag.StringVar(&zk, "zk", "127.0.0.1:2181","-zk=127.0.0.1:2181")
+func init() {
+	flag.StringVar(&nacos, "nacos", "127.0.0.1:8848", "-nacos 127.0.0.1:8848")
 }
-
 
 func main() {
 	flag.Parse()
+
+	// setup reporter, use gRPC reporter for production
+	report, err := reporter.NewGRPCReporter("YOUR_SKYWALKING_DOMAIN_NAME_OR_IP:11800")
+	if err != nil {
+		log.Fatalf("new reporter error: %v \n", err)
+	}
+
+	// setup tracer
+	tracer, err := go2sky.NewTracer("dubbo-go-skywalking-sample-tracer", go2sky.WithReporter(report))
+	if err != nil {
+		log.Fatalf("crate tracer error: %v \n", err)
+	}
+
+	// set dubbogo plugin client tracer
+	err = dubbo_go.SetClientTracer(tracer)
+	if err != nil {
+		log.Fatalf("set tracer error: %v \n", err)
+	}
+
+	// set extra tags and report tags
+	dubbo_go.SetClientExtraTags("extra-tags", "client")
+	dubbo_go.SetClientReportTags("release")
+
 	rc := config.NewRootConfigBuilder().
+		SetApplication(config.NewApplicationConfigBuilder().
+			SetName("provider-test-app").SetModule("opensource").
+			Build()).
 		SetProvider(config.NewProviderConfigBuilder().
 			AddService("GreeterProvider", config.NewServiceConfigBuilder().
 				SetInterface("com.apache.dubbo.sample.basic.IGreeter").
@@ -32,19 +60,24 @@ func main() {
 			Build()).
 		AddProtocol("triple", config.NewProtocolConfigBuilder().
 			SetName("tri").
+			//SetIp("127.0.0.1").
 			SetPort("20000").
 			Build()).
-		AddRegistry("bob", &config.RegistryConfig{
-		 Protocol: "zookeeper",
-		 Address:  zk,
-		 Timeout:  "3s",
-	 }).
+		SetLogger(&config.LoggerConfig{ZapConfig: config.ZapConfig{
+			Level: "DEBUG"}}).
+		AddRegistry("bob.test", &config.RegistryConfig{
+			Group:        "myGroup",
+			Protocol:     "nacos",
+			Address:      nacos,
+			Timeout:      "3s",
+			RegistryType: "interface",
+		}).
 		Build()
 
 	//rc.Init()
 
 	config.SetProviderService(&api.GreeterProvider{})
-	 hessian.RegisterPOJO(&api.User{})
+	//hessian.RegisterPOJO(&api.User{})
 
 	if err := rc.Init(); err != nil {
 		fmt.Println(err)
