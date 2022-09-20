@@ -7,7 +7,7 @@ import (
 )
 
 type GreeterProvider struct {
-	GreeterServer
+	UnimplementedGreeterServer
 }
 
 func getIpv4() string {

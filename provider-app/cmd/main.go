@@ -3,12 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/SkyAPM/go2sky"
-	dubbo_go "github.com/SkyAPM/go2sky-plugins/dubbo-go"
-	"github.com/SkyAPM/go2sky/reporter"
 	"github.com/dubbogo-test/provider-app/api"
 	"github.com/gin-gonic/gin"
-	"log"
 	"net/http"
 )
 
@@ -25,29 +21,6 @@ func init() {
 
 func main() {
 	flag.Parse()
-
-	// setup reporter, use gRPC reporter for production
-	report, err := reporter.NewGRPCReporter("YOUR_SKYWALKING_DOMAIN_NAME_OR_IP:11800")
-	if err != nil {
-		log.Fatalf("new reporter error: %v \n", err)
-	}
-
-	// setup tracer
-	tracer, err := go2sky.NewTracer("dubbo-go-skywalking-sample-tracer", go2sky.WithReporter(report))
-	if err != nil {
-		log.Fatalf("crate tracer error: %v \n", err)
-	}
-
-	// set dubbogo plugin client tracer
-	err = dubbo_go.SetClientTracer(tracer)
-	if err != nil {
-		log.Fatalf("set tracer error: %v \n", err)
-	}
-
-	// set extra tags and report tags
-	dubbo_go.SetClientExtraTags("extra-tags", "client")
-	dubbo_go.SetClientReportTags("release")
-
 	rc := config.NewRootConfigBuilder().
 		SetApplication(config.NewApplicationConfigBuilder().
 			SetName("provider-test-app").SetModule("opensource").
@@ -57,6 +30,7 @@ func main() {
 				SetInterface("com.apache.dubbo.sample.basic.IGreeter").
 				SetProtocolIDs("triple").
 				Build()).
+			//SetFilter("go2sky-tracing-server").
 			Build()).
 		AddProtocol("triple", config.NewProtocolConfigBuilder().
 			SetName("tri").
@@ -66,15 +40,13 @@ func main() {
 		SetLogger(&config.LoggerConfig{ZapConfig: config.ZapConfig{
 			Level: "DEBUG"}}).
 		AddRegistry("bob.test", &config.RegistryConfig{
-			Group:        "myGroup",
+			Group:        "DEFAULT_GROUP",
 			Protocol:     "nacos",
 			Address:      nacos,
 			Timeout:      "3s",
 			RegistryType: "interface",
 		}).
 		Build()
-
-	//rc.Init()
 
 	config.SetProviderService(&api.GreeterProvider{})
 	//hessian.RegisterPOJO(&api.User{})
@@ -84,6 +56,28 @@ func main() {
 
 		panic(err)
 	}
+
+	//// setup reporter, use gRPC reporter for production
+	//report, err := reporter.NewGRPCReporter("192.168.196.223:11800")
+	//if err != nil {
+	//	log.Fatalf("new reporter error: %v \n", err)
+	//}
+	//
+	//// setup tracer
+	//tracer, err := go2sky.NewTracer("dubbo-go", go2sky.WithReporter(report))
+	//if err != nil {
+	//	log.Fatalf("crate tracer error: %v \n", err)
+	//}
+	//
+	//// set dubbogo plugin server tracer
+	//err = dubbo_go.SetServerTracer(tracer)
+	//if err != nil {
+	//	log.Fatalf("set tracer error: %v \n", err)
+	//}
+	//
+	//// set extra tags and report tags
+	//dubbo_go.SetServerExtraTags("extra-tags", "server")
+	//dubbo_go.SetServerReportTags("release")
 
 	// 1.创建路由
 	r := gin.Default()
